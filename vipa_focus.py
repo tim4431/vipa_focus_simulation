@@ -7,6 +7,7 @@ from elec import *
 from tqdm import tqdm
 import time
 from typing import List
+import imageio
 
 
 # ----------------------------------------------------------------------
@@ -122,7 +123,7 @@ def vipa_elec2d(
             )
 
         if params.get("phase_amp_func"):
-            amp_res, phase_res = phase_amp_func(ix, iy, Xi_slice, Yi_slice)
+            phase_res, amp_res = phase_amp_func(ix, iy, Xi_slice, Yi_slice)
             phase_additional_patched = np.exp(1j * phase_res) * amp_res
         else:
             phase_additional_patched = np.ones_like(Xi_slice)
@@ -181,6 +182,10 @@ def crosssection_xy(
     Xi, Yi = np.meshgrid(xi, yi, indexing="xy")
     # print(Xi.shape, Yi.shape)
     Ei = vipa_elec2d(Xi, Yi, params, **kwargs)
+    zfi = params.get("zfi", None)
+    if zfi is not None:
+        print(f"Propagating initial zf = {zfi*1e3:.2f} mm")
+        Ei = freespace_propagation(xi, yi, Ei, params["lambda"], zfi)
     if show_E_field:
         extent = [-D / 2 * 1e6, D / 2 * 1e6, -D / 2 * 1e6, D / 2 * 1e6]
         plt.figure(figsize=(6, 5))
@@ -282,6 +287,10 @@ def crosssection_x(
 
     Xi, Yi = np.meshgrid(xi, yi, indexing="xy")
     Ei = vipa_elec2d(Xi, Yi, params, **kwargs)
+    zfi = params.get("zfi", None)
+    if zfi is not None:
+        print(f"Propagating initial zf = {zfi*1e3:.2f} mm")
+        Ei = freespace_propagation(xi, yi, Ei, params["lambda"], zfi)
     (xf, yf), profile = calc_field_after_lens(
         xi, yi, Ei, wl=params["lambda"], f=params["f"], zf=zf, **kwargs
     )
@@ -371,34 +380,39 @@ def crosssection_xz(
 
 
 def linear_increasing_tilt(ix, iy, Xi, Yi):
-    return (ix * (2 * np.pi / 780e-9) * 2e-5) * Xi
+    return (ix * (2 * np.pi / 780e-9) * 2e-5) * Xi, np.ones_like(Xi)
 
 
 def linear_increasing_tilt_disc(ix, iy, Xi, Yi):
-    return (ix * (2 * np.pi / 780e-9) * 2e-5) * (ix * 1e-3)
+    return (ix * (2 * np.pi / 780e-9) * 2e-5) * (ix * 1e-3), np.ones_like(Xi)
 
 
 def linear_increasing_tilt_cont(ix, iy, Xi, Yi):
-    return ((Xi / 1e-3) * (2 * np.pi / 780e-9) * 2e-5) * Xi
+    return ((Xi / 1e-3) * (2 * np.pi / 780e-9) * 2e-5) * Xi, np.ones_like(Xi)
 
 
 def linear_increasing_tilt_only(ix, iy, Xi, Yi):
-    return (ix * (2 * np.pi / 780e-9) * 2e-5) * (Xi - ix * 1e-3)
+    return (ix * (2 * np.pi / 780e-9) * 2e-5) * (Xi - ix * 1e-3), np.ones_like(Xi)
 
 
 def kxy_disc(ix, iy, Xi, Yi):
-    return 0.3 * ix * iy
+    return 0.3 * ix * iy, np.ones_like(Xi)
 
 
 def kxy_cont(ix, iy, Xi, Yi):
-    return 0.3 * (Xi / 1e-3) * (Yi / 1e-3)
+    return 0.3 * (Xi / 1e-3) * (Yi / 1e-3), np.ones_like(Xi)
 
 
 def kxpby(ix, iy, Xi, Yi):
-    return 0.3 * ix + 0.8 * iy
+    return 0.3 * ix + 0.8 * iy, np.ones_like(Xi)
 
 
-def amp_phase_eom(params, t, ix, iy, Xi, Yi, phase_func, freq_func, amp_func):
+def misaligned_tilt(ix, iy, Xi, Yi):
+    tx = np.cos(2 * np.pi * ix / 4) * 2e-5
+    return (tx * (2 * np.pi / 780e-9)) * Xi, np.ones_like(Xi)
+
+
+def phase_amp_eom(params, t, ix, iy, Xi, Yi, phase_func, freq_func, amp_func):
     c = 3e8
     FSR_Ratio = params["FSR_Ratio"]
     Lrt = params["Lrt"]
@@ -406,12 +420,13 @@ def amp_phase_eom(params, t, ix, iy, Xi, Yi, phase_func, freq_func, amp_func):
     Ny = params["Ny"]
     t_travel = ((ix + (Nx - 1) / 2) + ((iy + (Ny - 1) / 2) / FSR_Ratio)) * Lrt / c
     t_eom = t - t_travel
-    # print(t_eom)
-    amp = amp_func(t_eom)
-    # print(f"amp={amp}")
     phase = phase_func(t_eom)
+    amp = amp_func(t_eom)
 
-    return amp * np.ones_like(Xi), phase * np.ones_like(Xi)
+    return (
+        phase * np.ones_like(Xi),
+        amp * np.ones_like(Xi),
+    )
 
 
 def phase_freq_func_from_sequence(t_arr, frequency_arr, amp_arr):
@@ -465,30 +480,7 @@ def phase_freq_func_from_sequence(t_arr, frequency_arr, amp_arr):
         ]
         + [phase_start[-1]],
     )
-
-    # phase_list = []
-    # tList = np.linspace(0, t_arr[-1][1], 1000)
-    # for i in tList:
-    #     phase_list.append(phase_func(i) % (2 * np.pi))
-    # plt.plot(tList, phase_list)
-    # plt.xlabel("Time (s)")
-    # plt.ylabel("Frequency (Hz)")
-    # plt.title("Frequency vs Time")
-    # plt.grid()
-    # plt.show()
-    # # show the gradient of phase_func
-    # phase_grad_list = []
-    # for i in tList[2:-2]:
-    #     delta_t = 1e-12
-    #     phase_grad = (phase_func(i + delta_t) - phase_func(i - delta_t)) / (2 * delta_t)
-    #     phase_grad_list.append(phase_grad / (2 * np.pi))
-    # plt.plot(tList[2:-2], phase_grad_list)
-    # plt.xlabel("Time (s)")
-    # plt.ylabel("Frequency (Hz)")
-    # plt.title("Instantaneous Frequency vs Time")
-    # plt.grid()
-    # plt.show()
-
+    #
     amp_func = lambda t: np.piecewise(
         t,
         [t < t_arr[0][0]]
@@ -499,7 +491,34 @@ def phase_freq_func_from_sequence(t_arr, frequency_arr, amp_arr):
     return phase_func, freq_func, amp_func
 
 
-def eom_model(params, t, sequence: List, test_model=False):
+def eom_model(params, t, sequences: List):
+
+    models = []
+    for seq in sequences:
+        t_arr = seq["t_arr"]
+        frequency_arr = seq["frequency_arr"]
+        amp_arr = seq["amp_arr"]
+        #
+        phase_func, freq_func, amp_func = phase_freq_func_from_sequence(
+            t_arr, frequency_arr, amp_arr
+        )
+        phase_amp_eom_i = lambda ix, iy, Xi, Yi: phase_amp_eom(
+            params,
+            t,
+            ix,
+            iy,
+            Xi,
+            Yi,
+            phase_func=phase_func,
+            freq_func=freq_func,
+            amp_func=amp_func,
+        )
+        models.append(phase_amp_eom_i)
+
+    return models
+
+
+def zigzag_sequences():
     T = 0.2e-6
     FSR2 = 0.1298e9
     F0 = 11.0e9
@@ -507,69 +526,59 @@ def eom_model(params, t, sequence: List, test_model=False):
     F2 = F0 + 0.3 * FSR2
     F3 = F0 + FSR2 + 0.5 * FSR2
     F4 = F0 + FSR2 + 0.7 * FSR2
+    # seq0
     t_arr_0 = [(0, 2 * T), (2 * T, 4 * T)]
     frequency_arr_0 = [(F2, F1), (F1, F2)]
     amp_arr_0 = [1.0, 1.0]
-    phase_func_0, freq_func_0, amp_func_0 = phase_freq_func_from_sequence(
-        t_arr_0, frequency_arr_0, amp_arr_0
-    )
-    #
+    seq0 = {
+        "t_arr": t_arr_0,
+        "frequency_arr": frequency_arr_0,
+        "amp_arr": amp_arr_0,
+    }
+    # seq1
     t_arr_1 = [(0, T), (T, 2 * T), (2 * T, 3 * T), (3 * T, 4 * T)]
     frequency_arr_1 = [(0, 0), (F4, F4), (F4, F3), (F3, F4)]
     amp_arr_1 = [0.0, 1.0, 1.0, 1.0]
-    phase_func_1, freq_func_1, amp_func_1 = phase_freq_func_from_sequence(
-        t_arr_1, frequency_arr_1, amp_arr_1
-    )
+    seq1 = {
+        "t_arr": t_arr_1,
+        "frequency_arr": frequency_arr_1,
+        "amp_arr": amp_arr_1,
+    }
+    return [seq0, seq1]
 
-    amp_phase_eom_0 = lambda ix, iy, Xi, Yi: amp_phase_eom(
-        params,
-        t,
-        ix,
-        iy,
-        Xi,
-        Yi,
-        phase_func=phase_func_0,
-        freq_func=freq_func_0,
-        amp_func=amp_func_0,
-    )
-    # amp_phase_eom_1 = lambda ix, iy, Xi, Yi: (0.0, 0.0)
-    amp_phase_eom_1 = lambda ix, iy, Xi, Yi: amp_phase_eom(
-        params,
-        t,
-        ix,
-        iy,
-        Xi,
-        Yi,
-        phase_func=phase_func_1,
-        freq_func=freq_func_1,
-        amp_func=amp_func_1,
-    )
 
-    if test_model:
-        # have a heatmap of phase vs ix,iy
-        Xi, Yi = np.ones_like((1, 1))
-        Nx = params["Nx"]
-        Ny = params["Ny"]
-        phase_map_0 = np.zeros((Ny, Nx))
-        for ix in range(Nx):
-            for iy in range(Ny):
-                _, phase = amp_phase_eom_0(ix, iy, Xi, Yi)
-                phase_map_0[iy, ix] = phase
-        plt.imshow(
-            phase_map_0,
-            origin="lower",
-            cmap="twilight",
-            extent=[0, Nx - 1, 0, Ny - 1],
-            # vmin=0,
-            # vmax=2 * np.pi,
-        )
-        print(np.max(phase_map_0) - np.min(phase_map_0))
-        plt.colorbar(label="Phase (rad)")
-        plt.xlabel("ix")
-        plt.ylabel("iy")
-        plt.title("EOM Model 0 Phase Map")
-        plt.show()
-    return amp_phase_eom_0, amp_phase_eom_1
+def long_transport_sequences():
+    T = 1e-6
+    FSR2 = 0.1298e9
+    F0 = 11.0e9
+    F1 = F0 + 4 * FSR2
+    # seq0
+    t_arr_0 = [(0, T)]
+    frequency_arr_0 = [(F0, F1)]
+    amp_arr_0 = [1.0]
+    seq0 = {
+        "t_arr": t_arr_0,
+        "frequency_arr": frequency_arr_0,
+        "amp_arr": amp_arr_0,
+    }
+    return [seq0]
+
+
+def lensing_sequences():
+    T = 0.2e-6
+    FSR2 = 0.1298e9
+    F0 = 11.0e9
+    F1 = F0 + 0.5 * FSR2
+    # seq0
+    t_arr_0 = [(0, T), (T, 2 * T), (2 * T, 3 * T)]
+    frequency_arr_0 = [(F0, F0), (F0, F1), (F1, F1)]
+    amp_arr_0 = [1.0, 1.0, 1.0]
+    seq0 = {
+        "t_arr": t_arr_0,
+        "frequency_arr": frequency_arr_0,
+        "amp_arr": amp_arr_0,
+    }
+    return [seq0]
 
 
 def pinhole_demo():
@@ -622,8 +631,8 @@ if __name__ == "__main__":
         "extent_f": 300e-6,  # focal plane extent, only for plotting
     }
     params = {
-        "Nx": 8,
-        # "Nx": 2,
+        # "Nx": 8,
+        "Nx": 1,
         # "Ny": 9,
         "Ny": 1,
         "FSR_Ratio": 22.0,
@@ -635,42 +644,84 @@ if __name__ == "__main__":
         "f": 0.2,
         "phi": 0.0,
         "lambda": 780e-9,
-        # "D": 10e-2,  # real space extent
-        "D": 4e-2,  # real space extent
+        "D": 10e-2,  # real space extent
+        # "D": 4e-2,  # real space extent
         "RESOLUTION_X": 25e-6,  # real space resolution
         # "extent_f": 40e-6,  # focal plane extent, only for plotting
-        # "extent_f": 120e-6,  # focal plane extent, only for plotting
-        "extent_f": 800e-6,  # focal plane extent, only for plotting
+        "extent_f": 1500e-6,  # focal plane extent, only for plotting
+        # "extent_f": 100e-6,  # focal plane extent, only for plotting
+        # "extent_f": 800e-6,  # focal plane extent, only for plotting
         # "alpha": 2.0,
-        # "phase_amp_func": linear_increasing_tilt,
-        "phase_amp_func": None,
+        # "phase_amp_func": misaligned_tilt,
+        # "phase_amp_func": None,
+        "zfi": None,
         # "pinhole": {"diameter": 5e-6, "x": 0.0, "y": 0.0, "zf_pinhole": 0.5e-3},
     }
 
-    TYPE = 4
+    TYPE = 0
 
     if TYPE == 0:
-        _, _, _, intensity = crosssection_xy(params, zf=0)
-        H, W = intensity.shape
-        # _, _, intensity = crosssection_xy(params, zf=0e-6, show_E_field=True)
-        fig, ax = plt.subplots(1, 1, figsize=(4, 4))
-        ax.set_axis_off()
-        im = ax.imshow(
-            intensity,
-            cmap="Reds",
+        phi = 0
+        params.update({"phi": phi})
+        zf = 0
+        # _, _, _, intensity = crosssection_xy(params, zf=zf)
+        # H, W = intensity.shape
+        _, _, E_tilde_0, intensity = crosssection_xy(
+            params, zf=0e-6, show_E_field=False
         )
-        plt.tight_layout()
-        plt.savefig(
-            f"./vipa_focus_demo_intensity.png",
-            dpi=600,
-            bbox_inches="tight",
-            transparent=True,
-        )
+        # phi = 0.62
+        # params.update({"phi": phi})
+        # _, _, E_tilde_1, intensity = crosssection_xy(
+        #     params, zf=0e-6, show_E_field=False
+        # )
+        # E_tilde_sum = E_tilde_0 + E_tilde_1
+        # intensity = np.abs(E_tilde_sum) ** 2
+        # fig, ax = plt.subplots(1, 1, figsize=(4, 4))
+        # ax.set_axis_off()
+        # im = ax.imshow(
+        #     intensity,
+        #     cmap="Reds",
+        # )
+        # plt.tight_layout()
+        # plt.savefig(
+        #     f"./figs/vipa_focus_demo_intensity_2d.png",
+        #     dpi=600,
+        #     bbox_inches="tight",
+        #     transparent=True,
+        # )
 
-    elif TYPE == 1:
-        z_scan, xf, profiles = crosssection_xz(params)
+    elif TYPE in [1, 2]:
+        EXTENT_Z = 5e-3
+        NZ = 200
+        if TYPE == 1:
+            z_scan, xf, profiles = crosssection_xz(params, extent_z=EXTENT_Z, n_z=NZ)
 
-    elif TYPE == 2:
+        elif TYPE == 2:
+            NPHI = 30
+            gif_data = []
+            for phi in np.linspace(0.0, 2 * np.pi, NPHI):
+                print(f"phi = {phi:.2f}")
+                params["phi"] = phi  # update phase
+
+                z_scan, xf, profiles = crosssection_xz(
+                    params, extent_z=EXTENT_Z, n_z=NZ, show_focus=False
+                )
+                gif_data.append(profiles)
+            gif_data = np.array(gif_data)  # shape (NPHI, n_xf, n_z)
+            # normalize to [0,255]
+            gif_data = gif_data / np.max(gif_data)
+            gif_data = (gif_data * 255).astype(np.uint8)
+            # kron the gif to make xz aspect equal
+            dx = xf[1] - xf[0]
+            dz = z_scan[1] - z_scan[0]
+            ratio = dz / dx
+            print(f"dx={dx*1e6:.2f} um, dz={dz*1e6:.2f} um, ratio={ratio:.2f}")
+            # gif_data = np.kron(gif_data, np.ones((1, 1, int(ratio)), dtype=np.uint8))
+            # ----- write the animated GIF -----------------------------------------
+            imageio.mimsave("./figs/scan_phi.gif", gif_data, fps=5, loop=0)
+            print("✓  GIF saved as scan_phi.gif")
+
+    elif TYPE == 3:
         _, _, _, intensity = crosssection_xy(params, zf=0)
         H, W = intensity.shape
         data = np.zeros((11, 11, H, W))
@@ -704,28 +755,45 @@ if __name__ == "__main__":
 
         # np.save("vipa_focus_demo_data.npy", data)
 
-    elif TYPE == 3:
-        pinhole_demo()
     elif TYPE == 4:
-        # amp_phase_eom_0, amp_phase_eom_1 = eom_model(
-        #     params, t=0.12e-6, test_model=False
-        # )
+        pinhole_demo()
+    #
+    elif TYPE == 5:
+        xf, yf, E_tilde_0, intensity = crosssection_xy(params, zf=0, show_focus=False)
+        X, Y = np.meshgrid(xf, yf, indexing="xy")
+        print(np.min(X) * 1e6, np.max(X) * 1e6, np.min(Y) * 1e6, np.max(Y) * 1e6)
+        print(X[0])
+        exit(0)
 
-        gif_data = []
-        for t in np.linspace(0.0e-6, 0.8e-6, 60):
-            print(f"Calculating for t={t*1e6:.2f} us")
-            amp_phase_eom_0, amp_phase_eom_1 = eom_model(params, t=t)
-            params.update({"phase_amp_func": amp_phase_eom_0})
-            _, _, E_tilde_0, intensity = crosssection_xy(params, zf=0, show_focus=False)
-            params.update({"phase_amp_func": amp_phase_eom_1})
-            _, _, E_tilde_1, intensity_1 = crosssection_xy(
-                params, zf=0, show_focus=False
+        tList = np.linspace(0.1e-6, 0.6e-6, 5)
+        z0 = 7.8e-3
+        # zList = [0]
+        zList = np.arange(-2e-3, 2e-3, 0.1e-3)
+        for zf in zList:
+            z = z0 + zf
+            gif_data = []
+            for t in tList:
+                print(f"Calculating for t={t*1e6:.2f} us")
+                # sequences = zigzag_sequences()
+                # sequences = long_transport_sequences()
+                sequences = lensing_sequences()
+                models = eom_model(params, t=t, sequences=sequences)
+                E_tilde_sum = np.zeros_like(E_tilde_0)
+                for model in models:
+                    params.update({"phase_amp_func": model})
+                    _, _, E_tilde_i, intensity = crosssection_xy(
+                        params, zf=zf, show_focus=False
+                    )
+                    E_tilde_sum += E_tilde_i
+                intensity = np.abs(E_tilde_sum) ** 2
+                gif_data.append(intensity)
+            gif_data = np.array(gif_data)
+            np.savez(
+                f"./data/z={z*1e3:.1f}_scan_data.npz", X=X, Y=Y, Z=gif_data, t=tList
             )
-            E_tilde = E_tilde_0 + E_tilde_1
-            intensity = np.abs(E_tilde) ** 2
-            gif_data.append(intensity)
+            print(gif_data.shape)
+
         import imageio
 
-        gif_data = np.array(gif_data)
         gif_data = (gif_data / np.max(gif_data) * 255).astype(np.uint8)
-        imageio.mimwrite("vipa_eom_demo.gif", gif_data, fps=10, loop=0)
+        imageio.mimwrite("./figs/vipa_eom_demo.gif", gif_data, fps=10, loop=0)

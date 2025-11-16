@@ -181,15 +181,26 @@ def freespace_propagation(
         complex field at the output plane after propagation
     """
     # Calculate grid parameters
-    dxi = xi[1] - xi[0]
-    dyi = yi[1] - yi[0]
+    if len(yi) > 1:
+        dxi = xi[1] - xi[0]
+        dyi = yi[1] - yi[0]
 
-    # Create hashable identifiers for xi and yi arrays
-    xi_hash = hash(xi.tobytes())
-    yi_hash = hash(yi.tobytes())
+        # Create hashable identifiers for xi and yi arrays
+        xi_hash = hash(xi.tobytes())
+        yi_hash = hash(yi.tobytes())
 
-    # Get cached kzf or compute it
-    kzf = _compute_kzf(xi_hash, yi_hash, len(xi), len(yi), dxi, dyi, wl)
+        # Get cached kzf or compute it
+        kzf = _compute_kzf(xi_hash, yi_hash, len(xi), len(yi), dxi, dyi, wl)
+    else:
+        dxi = xi[1] - xi[0]
+
+        k0 = 2 * np.pi / wl
+        # Calculate spatial frequencies
+        kxi = 2 * np.pi * np.fft.fftshift(np.fft.fftfreq(len(xi), d=dxi))
+        kyi = 0
+
+        KX, KY = np.meshgrid(kxi, kyi)
+        kzf = np.sqrt(k0**2 - KX**2 - KY**2 + 0j)
 
     # Fourier transform of the input field
     Ei_k = np.fft.fftshift(np.fft.fft2(np.fft.ifftshift(Ei), norm="ortho"))
