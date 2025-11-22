@@ -1,5 +1,6 @@
 import numpy as np
 from typing import Tuple, List
+from crosssections import *
 
 
 def phase_amp_eom(params, t, ix, iy, nx, ny, Xi, Yi, phase_func, freq_func, amp_func):
@@ -169,3 +170,42 @@ def lensing_sequences():
         "amp_arr": amp_arr_0,
     }
     return [seq0]
+
+
+if __name__ == "__main__":
+    xf, yf, E_tilde_0, intensity = crosssection_xy(params, zf=0, show_focus=False)
+    X, Y = np.meshgrid(xf, yf, indexing="xy")
+    print(np.min(X) * 1e6, np.max(X) * 1e6, np.min(Y) * 1e6, np.max(Y) * 1e6)
+    print(X[0])
+    exit(0)
+
+    tList = np.linspace(0.1e-6, 0.6e-6, 5)
+    z0 = 7.8e-3
+    # zList = [0]
+    zList = np.arange(-2e-3, 2e-3, 0.1e-3)
+    for zf in zList:
+        z = z0 + zf
+        gif_data = []
+        for t in tList:
+            print(f"Calculating for t={t*1e6:.2f} us")
+            # sequences = zigzag_sequences()
+            # sequences = long_transport_sequences()
+            sequences = lensing_sequences()
+            models = eom_model(params, t=t, sequences=sequences)
+            E_tilde_sum = np.zeros_like(E_tilde_0)
+            for model in models:
+                params.update({"phase_amp_func": model})
+                _, _, E_tilde_i, intensity = crosssection_xy(
+                    params, zf=zf, show_focus=False
+                )
+                E_tilde_sum += E_tilde_i
+            intensity = np.abs(E_tilde_sum) ** 2
+            gif_data.append(intensity)
+        gif_data = np.array(gif_data)
+        np.savez(f"./data/z={z*1e3:.1f}_scan_data.npz", X=X, Y=Y, Z=gif_data, t=tList)
+        print(gif_data.shape)
+
+    import imageio
+
+    gif_data = (gif_data / np.max(gif_data) * 255).astype(np.uint8)
+    imageio.mimwrite("./figs/vipa_eom_demo.gif", gif_data, fps=10, loop=0)
