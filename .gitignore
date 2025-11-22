@@ -1,3 +1,4 @@
 figs/
 __pycache__/
 data/
+*.npz

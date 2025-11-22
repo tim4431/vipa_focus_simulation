@@ -1,8 +1,118 @@
 import numpy as np
 import matplotlib.pyplot as plt
-from typing import Tuple
+from typing import Tuple, List
+from scipy.special import eval_hermite
+from math import factorial
 from functools import lru_cache
 import time
+from tqdm import tqdm
+
+
+def _cm_coefficient(m: int, alpha: float) -> float:
+    """
+    Normal-ordering coefficient appearing in the HG mode expansion.
+    """
+    if m == 0:
+        # `eval_hermite(0, 0) == 1`, but saving the call avoids
+        # triggering a SciPy warning when alpha==1, mmax<=1.
+        Hm0 = 1.0
+    else:
+        Hm0 = eval_hermite(m, 0)
+
+    return Hm0 * np.sqrt(
+        (2 * alpha * (alpha**2 - 1) ** m)
+        / (2**m * factorial(m) * (1 + alpha**2) ** (m + 1))
+    )
+
+
+def rays2elec2d(
+    Xi: np.ndarray,
+    Yi: np.ndarray,
+    rays: List[dict],
+    params: dict,
+    tqdm_enable: bool = True,
+) -> np.ndarray:
+    #
+    alpha = params.get("alpha", 1.0)
+    mmax = params.get("mmax", 1)
+    gouy_phase = params.get("gouy_phase", np.pi / 2)
+    #
+    if tqdm_enable:
+        iterator = tqdm(range(len(rays)), desc="rays2elec2d")
+    else:
+        iterator = range(len(rays))
+    #
+    Xi_1d = Xi[0, :]
+    Yi_1d = Yi[:, 0]
+    field = np.zeros_like(Xi, dtype=np.complex128)
+    #
+    for idx in iterator:
+        ray = rays[idx]
+        center_x = ray["x"]
+        center_y = ray["y"]
+        waist = ray["w"]
+        intensity = ray.get("intensity", 1.0)
+        phase = ray.get("phase", 1.0)
+
+        cutoff = 5 * waist
+
+        c1 = np.searchsorted(Xi_1d, center_x - cutoff)
+        c2 = np.searchsorted(Xi_1d, center_x + cutoff)
+        r1 = np.searchsorted(Yi_1d, center_y - cutoff)
+        r2 = np.searchsorted(Yi_1d, center_y + cutoff)
+
+        # Clamp to array bounds
+        c1 = max(0, c1)
+        c2 = min(Xi.shape[1], c2 + 1)
+        r1 = max(0, r1)
+        r2 = min(Xi.shape[0], r2 + 1)
+
+        if c2 > c1 and r2 > r1:
+            Xi_slice = Xi[r1:r2, c1:c2]
+            Yi_slice = Yi[r1:r2, c1:c2]
+
+            field_raw = (
+                np.exp(
+                    -((Xi_slice - center_x) ** 2 + (Yi_slice - center_y) ** 2)
+                    / (waist**2)
+                )
+                * intensity
+                * np.exp(1j * phase)
+            )
+
+            if ray.get("phase_amp_func"):
+                phase_amp_func = ray.get("phase_amp_func")
+                phase_res, amp_res = phase_amp_func(
+                    Xi_slice - center_x, Yi_slice - center_y
+                )
+                phase_additional_patched = np.exp(1j * phase_res) * amp_res
+            else:
+                phase_additional_patched = np.ones_like(Xi_slice)
+
+            #
+            ix = ray.get("ix", 0)
+            iy = ray.get("iy", 0)
+            field0 = field_raw * phase_additional_patched / waist**2
+
+            if alpha == 1 or mmax < 1:
+                gaussian_prefactor = np.ones_like(
+                    Xi_slice, dtype=np.complex128
+                ) * np.exp(-1j * (ix + iy) * gouy_phase)
+            else:
+                gaussian_prefactor = np.zeros_like(Xi_slice, dtype=np.complex128)
+                for p in range(mmax + 1):
+                    for q in range(mmax + 1):
+                        coeff = _cm_coefficient(p, alpha) * _cm_coefficient(q, alpha)
+                        phase_gouy = np.exp(
+                            -1j * (ix + iy) * ((p + q + 1) * gouy_phase)  # confocal
+                        )
+                        Hp = eval_hermite(p, np.sqrt(2) * (Xi_slice - center_x) / waist)
+                        Hq = eval_hermite(q, np.sqrt(2) * (Yi_slice - center_y) / waist)
+                        gaussian_prefactor += coeff * phase_gouy * Hp * Hq
+            #
+            field[r1:r2, c1:c2] += gaussian_prefactor * field0
+
+    return field
 
 
 def calc_field_after_lens(
