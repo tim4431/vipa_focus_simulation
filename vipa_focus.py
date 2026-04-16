@@ -23,6 +23,7 @@ def vipa_rays(
     d = params["d"]
     phase_amp_func = params.get("phase_amp_func", None)
     displacement_func = params.get("displacement_func", None)
+    phase_correction = params.get("phase_correction", None)
     #
 
     rays = []
@@ -38,6 +39,9 @@ def vipa_rays(
                 center_y += dy
             intensity = np.exp(-(nx * lx + ny * ly))
             phase = -(ix * FSR_Ratio + iy) * (phi)
+            if phase_correction is not None:
+                # pass
+                phase += phase_correction[nx, ny]
             #
             ray = {
                 "x": center_x,
@@ -45,6 +49,8 @@ def vipa_rays(
                 "w": w,
                 "ix": ix,
                 "iy": iy,
+                "nx": nx,
+                "ny": ny,
                 "intensity": intensity,
                 "phase": phase,
             }
@@ -61,14 +67,15 @@ def vipa_rays(
 
 
 def rays_from_file(
+    filename: str,
     params: dict,
 ) -> np.ndarray:
-    FSR_Ratio = params["FSR_Ratio"]
+    data = np.load(filename, allow_pickle=True)
     #
-    # FILENAME = "./ripa_gen2_1st_mon0_rays.npz"
-    FILENAME = "./ripa_gen2_2nd_mon0_rays.npz"
-    data = np.load(FILENAME, allow_pickle=True)
-    xList = data["xList"] * 1e-2
+    FSR_Ratio = params["FSR_Ratio"]
+    phi = params["phi"]
+    #
+    xList = data["xList"] * 1e-2  # optable unit is cm
     yList = data["yList"] * 1e-2
     # center the beams
     xList -= np.mean(xList)
@@ -85,6 +92,7 @@ def rays_from_file(
     assert (
         len(xList) == Nx * Ny
     ), f"Number of traced rays {len(xList)} does not match Nx*Ny={Nx*Ny}"
+    print(f"Number of traced rays: {len(xList)} matching Nx*Ny={Nx*Ny}")
     #
     wl = params["lambda"]
 
@@ -110,6 +118,8 @@ def rays_from_file(
                 "w": 61e-6,
                 "ix": ix,
                 "iy": iy,
+                "nx": nx,
+                "ny": ny,
                 "intensity": intensity,
                 "phase": phase,
                 "phase_amp_func": phase_amp_func_i,
@@ -121,7 +131,7 @@ def rays_from_file(
     return rays
 
 
-DSP = -10e-6  # 20 um
+DSP = -100e-6  # 20 um
 
 
 def misaligned_tilt(ix, iy, nx, ny, Xi, Yi):
@@ -130,88 +140,153 @@ def misaligned_tilt(ix, iy, nx, ny, Xi, Yi):
 
 
 def misaligned_displacement(ix, iy, nx, ny):
-    dx = -np.sin(2 * np.pi * nx / 4) * DSP
-    dy = 0
+    # dx = -np.sin(2 * np.pi * nx / 4) * DSP
+    # dy = 0
+    dx = 0
+    dy = -np.sin(2 * np.pi * ny / 4) * DSP
     return dx, dy
 
 
-# ----------------------------------------------------------------------
-# Self-test / demo
-# ----------------------------------------------------------------------
+PARAMS_100 = {
+    "Nx": 100,
+    "Ny": 100,
+    "FSR_Ratio": 100,
+    "lx": 0.01,
+    "ly": 0.01,
+    "w": 61e-6,  # beam waist
+    "d": 360e-6,  # beam spacing
+    "f": 0.2,
+    "phi": 0.0,
+    "lambda": 780e-9,
+    "D": 40e-2,  # real space extent
+    "RESOLUTION_X": 25e-6,  # real space resolution
+    "extent_f": 1000e-6,  # focal plane extent, only for plotting
+    # "phase_amp_func": misaligned_tilt,
+    # "displacement_func": misaligned_displacement,
+    # "gouy_phase": 0.0,
+}
+PARAMS_10 = {
+    "Nx": 1,
+    "Ny": 9,
+    "FSR_Ratio": 22.0,
+    "Lrt": 2.311,
+    "lx": 0.198,
+    "ly": 0.052,
+    "w": 108e-6,  # beam waist
+    "d": 1000e-6,  # beam spacing
+    "f": 0.2,
+    "phi": 0.0,
+    "lambda": 780e-9,
+    "D": 10e-2,  # real space extent
+    "RESOLUTION_X": 25e-6,  # real space resolution
+    "extent_x": 1e-2,
+    "extent_f": 800e-6,  # focal plane extent, only for plotting
+    # "phase_amp_func": misaligned_tilt,
+    # "displacement_func": misaligned_displacement,
+    "zfi": None,
+    # "gouy_phase": 0.0,
+}
+
 if __name__ == "__main__":
-    PARAMS_100 = {
-        "Nx": 100,
-        "Ny": 100,
-        "FSR_Ratio": 100,
-        "lx": 0.01,
-        "ly": 0.01,
-        "w": 108e-6,  # beam waist
-        "d": 300e-6,  # beam spacing
-        "f": 0.2,
-        "phi": 0.0,
-        "lambda": 780e-9,
-        "D": 20e-2,  # real space extent
-        "RESOLUTION_X": 25e-6,  # real space resolution
-        "extent_f": 1000e-6,  # focal plane extent, only for plotting
-        "phase_amp_func": misaligned_tilt,
-        "displacement_func": misaligned_displacement,
-    }
-    PARAMS_10 = {
-        "Nx": 8,
-        # "Nx": 1,
-        "Ny": 9,
-        # "Ny": 1,
-        "FSR_Ratio": 22.0,
-        "Lrt": 2.311,
-        "lx": 0,
-        # "lx": 0.15,
-        "ly": 0.052,
-        "w": 108e-6,  # beam waist
-        "d": 1000e-6,  # beam spacing
-        "f": 0.2,
-        "phi": 0.0,
-        "lambda": 780e-9,
-        "D": 10e-2,  # real space extent
-        "RESOLUTION_X": 25e-6,  # real space resolution
-        "extent_x": 1e-2,
-        "extent_f": 500e-6,  # focal plane extent, only for plotting
-        "phase_amp_func": misaligned_tilt,
-        "displacement_func": misaligned_displacement,
-        "zfi": None,
-    }
 
-    TYPE = 0
+    TYPE = 5
 
-    params = PARAMS_100
+    # params = PARAMS_100
+    params = PARAMS_10
 
     if TYPE == 0:
-        phi = 0
-        params.update({"phi": phi})
+        """XY focal plane profile"""
         zf = 0
+        # phase_correction = np.load("./data/vipa_fitted_phases_phi_0.00.npy")
+        # params["phase_correction"] = np.array(phase_correction)
         rays = vipa_rays(params)
 
-        _, _, E_tilde_0, intensity = crosssection_xy(
-            rays, params, zf=0e-6, show_E_field=True, show_focus=True
+        xf, yf, E_tilde_0, intensity = crosssection_xy(
+            rays, params, zf=0e-6, show_E_field=False, show_focus=False
         )
-        # H, W = intensity.shape
-        # gif_data = []
-        # for D in np.linspace(-100e-6, 100e-6, 21):
-        #     DSP = D
-        #     # DSP = 100e-6  # 20 um
-        #     _, _, E_tilde_0, intensity = crosssection_xy(
-        #         params, zf=0e-6, show_E_field=False, show_focus=False
-        #     )
-        #     gif_data.append(intensity)
-        # gif_data = np.array(gif_data)  # shape (ND, n_xf
-        # gif_data = gif_data / np.max(gif_data)
-        # gif_data = (gif_data * 255).astype(np.uint8)
-        # imageio.mimsave("./figs/scan_displacement.gif", gif_data, fps=5, loop=0)
+        print(xf[1] - xf[0])
+        # np.savez("./data/vipa_100.npz", xf=xf, yf=yf, intensity=intensity)
+        # np.save("./data/vipa_focus_demo_1d.npy", intensity)
+        linecut = intensity[:, intensity.shape[1] // 2]
+
+        params.update({"phi": 0.5})
+        rays = vipa_rays(params)
+
+        xf, yf, E_tilde_0, intensity = crosssection_xy(
+            rays, params, zf=0e-6, show_E_field=False, show_focus=False
+        )
+        linecut_phase_shifted = intensity[:, intensity.shape[1] // 2]
+
+        params.update({"phase_amp_func": misaligned_tilt, "phi": 0})
+        rays = vipa_rays(params)
+
+        xf, yf, E_tilde_0, intensity = crosssection_xy(
+            rays, params, zf=0e-6, show_E_field=False, show_focus=False
+        )
+        linecut_misaligned_tilt_only = intensity[:, intensity.shape[1] // 2]
+
+        params.update(
+            {"phase_amp_func": None, "displacement_func": misaligned_displacement}
+        )
+        rays = vipa_rays(params)
+
+        xf, yf, E_tilde_0, intensity = crosssection_xy(
+            rays, params, zf=0e-6, show_E_field=False, show_focus=False
+        )
+        linecut_misaligned_displacement = intensity[:, intensity.shape[1] // 2]
+
+        params.update({"phi": 0.5})
+        rays = vipa_rays(params)
+        xf, yf, E_tilde_0, intensity = crosssection_xy(
+            rays, params, zf=0e-6, show_E_field=False, show_focus=False
+        )
+        linecut_disp_phase_shifted = intensity[:, intensity.shape[1] // 2]
+
+        plt.figure()
+        plt.plot(xf * 1e6, linecut, "b-", label="Aligned")
+        plt.plot(
+            xf * 1e6, linecut_phase_shifted, "orange", label="Phase shifted (0.5 rad)"
+        )
+        plt.plot(
+            xf * 1e6, linecut_misaligned_tilt_only, "r-", label="Misaligned tilt only"
+        )
+        plt.plot(
+            xf * 1e6,
+            linecut_misaligned_displacement,
+            "g-",
+            label="Misaligned displacement only",
+        )
+        plt.plot(
+            xf * 1e6,
+            linecut_disp_phase_shifted,
+            "k--",
+            label="Misalignment disp Phase shifted (0.5 rad)",
+        )
+        plt.legend()
+
+        # plt.figure()
+        # plt.plot(xf * 1e6, linecut, "b-", label="Aligned")
+        # plt.xlabel(r"$x_f$ (µm)")
+        # plt.ylabel("Intensity (arb.)")
+        # plt.title(f"Focal plane intensity linecut at y=0 µm")
+        # plt.tight_layout()
+        plt.yscale("log")
+        plt.show()
+        # np.save("./data/vipa_focus_demo_linecut.npy", linecut)
 
     elif TYPE in [1, 2]:
-        EXTENT_Z = 5e-3
-        NZ = 200
+        """XZ profile"""
+        EXTENT_Z = 20e-3
+        NZ = 2000
         if TYPE == 1:
-            z_scan, xf, profiles = crosssection_xz(params, extent_z=EXTENT_Z, n_z=NZ)
+            rays = vipa_rays(params)
+            z_scan, xf, profiles = crosssection_xz(
+                rays, params, extent_z=EXTENT_Z, n_z=NZ
+            )
+            print(f"profiles shape: {profiles.shape}")
+            np.savez(
+                "./data/vipa_focus_xz.npz", z_scan=z_scan, xf=xf, profiles=profiles
+            )
 
         elif TYPE == 2:
             NPHI = 30
@@ -220,13 +295,15 @@ if __name__ == "__main__":
                 print(f"phi = {phi:.2f}")
                 params["phi"] = phi  # update phase
 
+                rays = vipa_rays(params)
                 z_scan, xf, profiles = crosssection_xz(
-                    params, extent_z=EXTENT_Z, n_z=NZ, show_focus=False
+                    rays, params, extent_z=EXTENT_Z, n_z=NZ, show_focus=False
                 )
                 gif_data.append(profiles)
             gif_data = np.array(gif_data)  # shape (NPHI, n_xf, n_z)
             # normalize to [0,255]
             gif_data = gif_data / np.max(gif_data)
+            np.save("./data/vipa_focus_xz_phi_scan.npy", gif_data)
             gif_data = (gif_data * 255).astype(np.uint8)
             # kron the gif to make xz aspect equal
             dx = xf[1] - xf[0]
@@ -252,24 +329,32 @@ if __name__ == "__main__":
                     zf=0e-6,
                     show_focus=False,
                 )
-                # print(intensity.shape)
                 data[i, j, :, :] = intensity
-                # plt.imshow(
-                #     intensity,
-                #     extent=[-params["extent_f"] * 1e6, params["extent_f"] * 1e6] * 2,
-                #     origin="lower",
-                #     cmap="rainbow",
-                #     aspect="equal",
-                #     vmin=0,
-                # )
-                # plt.title(
-                #     f"(i,j) = ({i}, {j}), phi = {(i / 11 + 2 * j) * np.pi / 11:.2f} rad"
-                # )
-                # plt.xlabel(r"$x_f$ (µm)")
-                # plt.ylabel(r"$y_f$ (µm)")
-                # plt.tight_layout()
-                # plt.savefig(f"./figs/vipa_focus_demo_phi_{i}_{j}.png")
 
-        # np.save("vipa_focus_demo_data.npy", data)
+    elif TYPE == 4:
+        dsps = np.linspace(-200e-6, 200e-6, 11)
+        gifs = []
+        for dsp in dsps:
+            DSP = dsp
+            rays = vipa_rays(params)
+            _, intensity = crosssection_x(
+                rays,
+                params,
+                zf=0e-6,
+                show_focus=False,
+            )
+            plt.figure()
+            plt.plot(intensity)
+            plt.ylim(0, 50e15)
+            plt.show()
+        gifs = np.array(gifs)
+        gifs = (gifs / np.max(gifs) * 255).astype(np.uint8)
+        imageio.mimsave("./figs/vipa_misalignment_dsp.gif", gifs, fps=5, loop=0)
+        print("✓  GIF saved as vipa_misalignment_dsp.gif")
 
-    #
+    elif TYPE == 5:
+        """Rays from file"""
+        rays = rays_from_file("./data/optable/ripa_gen2_2nd_mon0_rays.npz", params)
+        xf, yf, E_tilde_0, intensity = crosssection_xy(
+            rays, params, zf=0e-6, show_E_field=False, show_focus=True, log_scale=False
+        )

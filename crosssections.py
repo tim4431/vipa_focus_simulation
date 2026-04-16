@@ -1,6 +1,7 @@
 import numpy as np
 import matplotlib.pyplot as plt
 from core import *
+from matplotlib.colors import LogNorm, Normalize
 
 
 def crosssection_xy(
@@ -8,11 +9,18 @@ def crosssection_xy(
     params: dict,
     zf: float = 0.0,
     show_focus: bool = True,
+    log_scale: bool = False,
     show_E_field: bool = False,
     **kwargs,
 ):
     """
-    Special-case: square patch (default ±500 µm) with uniform resolution.
+    Cross-section of |E|² at focal plane zf.
+    returns:
+    - xf       : 1-D array (metres)
+    - yf       : 1-D array (metres)
+    - E_tilde  : 2-D array, shape (len(yf), len(xf))   complex electric field after lens at zf
+    - intensity: 2-D array, shape (len(yf), len(xf))   |E_tilde|²
+    -----------
     """
     D = params["D"]
     RESOLUTION_X = params["RESOLUTION_X"]
@@ -23,6 +31,7 @@ def crosssection_xy(
     # print(Xi.shape, Yi.shape)
 
     Ei = rays2elec2d(Xi, Yi, rays, params, **kwargs)
+    # print("Total input power (arb. units):", np.sum(np.abs(Ei) ** 2))
 
     zfi = params.get("zfi", None)
     if zfi is not None:
@@ -104,10 +113,14 @@ def crosssection_xy(
         plt.imshow(
             intensity,
             extent=[-extent_um, extent_um, -extent_um, extent_um],
+            norm=(
+                LogNorm(vmin=np.max(intensity) * 1e-5, vmax=np.max(intensity))
+                if log_scale
+                else Normalize(vmin=0, vmax=np.max(intensity))
+            ),
             origin="lower",
             cmap="rainbow",
             aspect="equal",
-            vmin=0,
         )
         plt.colorbar(label="Intensity (arb.)")
         # ticks = np.arange(-extent_um, extent_um + 1e-12, 100)
@@ -154,7 +167,6 @@ def crosssection_x(
         xi, yi, Ei, wl=params["lambda"], f=params["f"], zf=zf, **kwargs
     )
     profile = np.abs(profile) ** 2  # shape (1, len(yf))
-    # print(profile.shape)
     profile = profile.flatten()  # shape (len(yf),)
 
     extent_f = params["extent_f"]
@@ -176,6 +188,7 @@ def crosssection_x(
 
 
 def crosssection_xz(
+    rays: List[dict],
     params: dict,
     extent_z: float = 20e-6,
     n_z: int = 51,
@@ -204,7 +217,7 @@ def crosssection_xz(
     profiles = []
     for z in tqdm(z_scan, desc="z scan"):
         xf, prof = crosssection_x(
-            params, zf=z, show_focus=False, tqdm_enable=False, **kwargs
+            rays, params, zf=z, show_focus=False, tqdm_enable=False, **kwargs
         )
         profiles.append(prof)
 

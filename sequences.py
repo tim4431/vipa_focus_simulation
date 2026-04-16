@@ -1,6 +1,7 @@
 import numpy as np
 from typing import Tuple, List
 from crosssections import *
+from vipa_focus import *
 
 
 def phase_amp_eom(params, t, ix, iy, nx, ny, Xi, Yi, phase_func, freq_func, amp_func):
@@ -155,15 +156,33 @@ def long_transport_sequences():
     return [seq0]
 
 
-def lensing_sequences():
-    T = 0.2e-6
+def lensing_sequences(T: float = 0.1e-6):
+    # T = 0.05e-6
     FSR2 = 0.1298e9
     F0 = 11.0e9
     F1 = F0 + 0.5 * FSR2
     # seq0
-    t_arr_0 = [(0, T), (T, 2 * T), (2 * T, 3 * T)]
+    t_arr_0 = [(0, T / 2), (T / 2, 3 * T / 2), (3 * T / 2, 2 * T)]
+    # t_arr_0 = [(0, T), (T, 2 * T)]
     frequency_arr_0 = [(F0, F0), (F0, F1), (F1, F1)]
+    # frequency_arr_0 = [(F0, F0), (F1, F1)]
     amp_arr_0 = [1.0, 1.0, 1.0]
+    # amp_arr_0 = [1.0, 1.0]
+    seq0 = {
+        "t_arr": t_arr_0,
+        "frequency_arr": frequency_arr_0,
+        "amp_arr": amp_arr_0,
+    }
+    return [seq0]
+
+
+def pulse_sequences():
+    T = 1e-6
+    F0 = 11.295e9
+    # seq0
+    t_arr_0 = [(0, T / 2), (T / 2, 3 * T / 2), (3 * T / 2, 2 * T)]
+    frequency_arr_0 = [(0, 0), (F0, F0), (0, 0)]
+    amp_arr_0 = [0.0, 1.0, 0.0]
     seq0 = {
         "t_arr": t_arr_0,
         "frequency_arr": frequency_arr_0,
@@ -173,39 +192,134 @@ def lensing_sequences():
 
 
 if __name__ == "__main__":
-    xf, yf, E_tilde_0, intensity = crosssection_xy(params, zf=0, show_focus=False)
-    X, Y = np.meshgrid(xf, yf, indexing="xy")
-    print(np.min(X) * 1e6, np.max(X) * 1e6, np.min(Y) * 1e6, np.max(Y) * 1e6)
-    print(X[0])
-    exit(0)
+    params = PARAMS_10
 
-    tList = np.linspace(0.1e-6, 0.6e-6, 5)
-    z0 = 7.8e-3
-    # zList = [0]
-    zList = np.arange(-2e-3, 2e-3, 0.1e-3)
-    for zf in zList:
-        z = z0 + zf
+    TYPE = 2
+
+    if TYPE == 0:
+        # sequences = zigzag_sequences()
+        # sequences = long_transport_sequences()
+        # sequences = lensing_sequences()
+        sequences = pulse_sequences()
+        #
+        models = eom_model(params, t=1e-6, sequences=sequences)
+        model = models[0]
+        params.update({"phase_amp_func": model})
+        rays = vipa_rays(params)
+        xf, yf, E_tilde_0, intensity_0 = crosssection_xy(rays, params, show_focus=True)
+        X, Y = np.meshgrid(xf, yf, indexing="xy")
+        # exit(0)
+        #
+        tList = np.linspace(0.20e-6, 0.9e-6, 800)
         gif_data = []
         for t in tList:
             print(f"Calculating for t={t*1e6:.2f} us")
-            # sequences = zigzag_sequences()
-            # sequences = long_transport_sequences()
-            sequences = lensing_sequences()
             models = eom_model(params, t=t, sequences=sequences)
             E_tilde_sum = np.zeros_like(E_tilde_0)
             for model in models:
                 params.update({"phase_amp_func": model})
-                _, _, E_tilde_i, intensity = crosssection_xy(
-                    params, zf=zf, show_focus=False
+                rays = vipa_rays(params)
+                xf, yf, E_tilde_i, intensity = crosssection_xy(
+                    rays, params, show_focus=False
                 )
                 E_tilde_sum += E_tilde_i
             intensity = np.abs(E_tilde_sum) ** 2
             gif_data.append(intensity)
         gif_data = np.array(gif_data)
-        np.savez(f"./data/z={z*1e3:.1f}_scan_data.npz", X=X, Y=Y, Z=gif_data, t=tList)
+        np.savez(f"./data/sequences_1.npz", X=X, Y=Y, Z=gif_data, t=tList)
         print(gif_data.shape)
 
-    import imageio
+        import imageio
 
-    gif_data = (gif_data / np.max(gif_data) * 255).astype(np.uint8)
-    imageio.mimwrite("./figs/vipa_eom_demo.gif", gif_data, fps=10, loop=0)
+        gif_data = (gif_data / np.max(gif_data) * 255).astype(np.uint8)
+        imageio.mimwrite("./figs/vipa_eom_demo.gif", gif_data, fps=10, loop=0)
+
+    elif TYPE == 1:
+        # sequences = zigzag_sequences()
+        # sequences = long_transport_sequences()
+        # sequences = lensing_sequences()
+        T = 2e-6
+        sequences = lensing_sequences(T=T)
+        params.update({"extent_f": 80e-6})
+        #
+        models = eom_model(params, t=T / 2, sequences=sequences)
+        model = models[0]
+        params.update({"phase_amp_func": model})
+        rays = vipa_rays(params)
+        EXTENT_Z = 12e-3
+        NZ = 300
+        z_scan, xf, profiles = crosssection_xz(
+            rays, params, extent_z=EXTENT_Z, n_z=NZ, show_focus=True
+        )
+        # xf, yf, E_tilde_0, intensity_0 = crosssection_xy(rays, params, show_focus=True)
+        Z, X = np.meshgrid(z_scan, xf, indexing="xy")
+        # exit(0)
+        #
+        tList = np.linspace(0.0e-6, 2 * T, 200)
+        gif_data = []
+        for t in tList:
+            print(f"Calculating for t={t*1e6:.2f} us")
+            models = eom_model(params, t=t, sequences=sequences)
+            E_tilde_sum = np.zeros_like(profiles)
+            for model in models:
+                params.update({"phase_amp_func": model})
+                rays = vipa_rays(params)
+                z_scan, xf, profiles = crosssection_xz(
+                    rays, params, extent_z=EXTENT_Z, n_z=NZ, show_focus=False
+                )
+                E_tilde_sum += profiles
+            intensity = np.abs(E_tilde_sum) ** 2
+            gif_data.append(intensity)
+        gif_data = np.array(gif_data)
+        np.savez(
+            f"./data/sequences_lensing_T={T*1e9:.1f}.npz", X=X, Z=Z, I=gif_data, t=tList
+        )
+        print(gif_data.shape)
+        # for every t, calculate the intensity-weighted x and z mean position
+        xmList = []
+        zmList = []
+        IList = []
+        xMList = []
+        zMList = []
+        for i in range(gif_data.shape[0]):
+            I = gif_data[i, :, :]
+            I_sum = np.sum(np.sum(I))
+            if I_sum == 0:
+                x_mean = 0.0
+                z_mean = 0.0
+                xM = 0.0
+                zM = 0.0
+            else:
+                x_mean = np.sum(X * I) / I_sum
+                z_mean = np.sum(Z * I) / I_sum
+                idx = np.unravel_index(np.argmax(I), I.shape)
+                zM = Z[idx]
+                xM = X[idx]
+
+            xmList.append(x_mean)
+            zmList.append(z_mean)
+            IList.append(I_sum)
+            xMList.append(xM)
+            zMList.append(zM)
+
+        xmList = np.array(xmList)
+        zmList = np.array(zmList)
+        IList = np.array(IList)
+        xMList = np.array(xMList)
+        zMList = np.array(zMList)
+        np.savez(
+            f"./data/sequences_lensing_T={T*1e9:.1f}_mean_position.npz",
+            xm=xmList,
+            zm=zmList,
+            t=tList,
+            I=IList,
+            xM=xMList,
+            zM=zMList,
+        )
+
+        import imageio
+
+        gif_data = (gif_data / np.max(gif_data) * 255).astype(np.uint8)
+        imageio.mimwrite(
+            f"./figs/vipa_eom_lensing_T={T*1e9:.1f}.gif", gif_data, fps=20, loop=0
+        )
