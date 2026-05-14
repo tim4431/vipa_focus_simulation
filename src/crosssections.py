@@ -1,6 +1,6 @@
 import numpy as np
 import matplotlib.pyplot as plt
-from core import *
+from .core import *
 from matplotlib.colors import LogNorm, Normalize
 
 
