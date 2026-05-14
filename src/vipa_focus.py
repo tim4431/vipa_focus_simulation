@@ -218,7 +218,7 @@ PARAMS_10_TWZ = {
     "D": 15e-2,  # real space extent
     "RESOLUTION_X": 25e-6,  # real space resolution
     "extent_x": 1e-2,
-    "extent_f": 10e-6,  # focal plane extent, only for plotting
+    "extent_f": 6e-6,  # focal plane extent, only for plotting
     # "phase_amp_func": misaligned_tilt,
     # "displacement_func": misaligned_displacement,
     "zfi": None,
