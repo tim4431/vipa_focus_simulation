@@ -10,7 +10,11 @@ import numpy as np
 import matplotlib.pyplot as plt
 from matplotlib.colors import LogNorm
 
-from src.vector_focus import focus_gaussian_vectorial, polarization_observables
+from src.vector_focus import (
+    focus_pupil_vectorial,
+    gaussian_pupil,
+    polarization_observables,
+)
 
 
 if __name__ == "__main__":
@@ -19,15 +23,18 @@ if __name__ == "__main__":
     n = 1.0
     f = 3e-3
     pupil_radius = f * NA / n
+    pupil = gaussian_pupil(0.85 * pupil_radius)
 
-    (xf, yf), E, _ = focus_gaussian_vectorial(
+    # `focus_pupil_vectorial` is the general interface: replace `pupil` with
+    # any scalar pupil array/callable and `polarization` with any Jones map.
+    (xf, yf), E, _ = focus_pupil_vectorial(
         wavelength=wavelength,
         NA=NA,
         n=n,
         f=f,
-        w_pupil=0.85 * pupil_radius,
-        polarization=(1, 0),
-        N=2048,
+        scalar_pupil=pupil,
+        polarization="x",
+        N=1024,
         dx_focus=50e-9,
     )
     mx = np.abs(xf) <= 3e-6
@@ -38,8 +45,14 @@ if __name__ == "__main__":
     signal = obs["intensity"] > obs["intensity"].max() * 1e-4
 
     print(f"focal pixel size: {(xf[1] - xf[0]) * 1e9:.1f} nm")
-    print(f"peak longitudinal fraction: {np.max(obs['longitudinal_fraction'][signal]):.3f}")
-    print(f"on-axis longitudinal fraction: {obs['longitudinal_fraction'][len(yf)//2, len(xf)//2]:.3e}")
+    print(
+        "peak longitudinal fraction: "
+        f"{np.max(obs['longitudinal_fraction'][signal]):.3f}"
+    )
+    print(
+        "on-axis longitudinal fraction: "
+        f"{obs['longitudinal_fraction'][len(yf)//2, len(xf)//2]:.3e}"
+    )
 
     panels = [
         (r"$|E_x|^2$", obs["Ix"]),
