@@ -111,7 +111,7 @@ def rays_from_file(
             ray = {
                 "x": xList[idx],
                 "y": yList[idx],
-                "w": 61e-6,
+                "w": params["w"],
                 "ix": ix,
                 "iy": iy,
                 "nx": nx,
@@ -181,6 +181,26 @@ PARAMS_80 = {
     "zfi": None,
     # "gouy_phase": 0.0,
 }
+PARAMS_80_TWZ = {
+    "Nx": 80,
+    "Ny": 80,
+    "FSR_Ratio": 80,
+    "lx": 0.01,
+    "ly": 0.01,
+    "w": 73.82e-6,  # beam waist
+    "d": 420e-6,  # beam spacing
+    "f": 0.04,
+    "phi": 0.0,
+    "lambda": 780e-9,
+    "D": 20e-2,  # real space extent
+    "RESOLUTION_X": 25e-6,  # real space resolution
+    "extent_x": 1e-2,
+    "extent_f": 50e-6,  # focal plane extent, only for plotting
+    # "phase_amp_func": misaligned_tilt,
+    # "displacement_func": misaligned_displacement,
+    "zfi": None,
+    # "gouy_phase": 0.0,
+}
 PARAMS_10 = {
     "Nx": 8,
     "Ny": 9,
@@ -218,7 +238,7 @@ PARAMS_10_TWZ = {
     "D": 15e-2,  # real space extent
     "RESOLUTION_X": 25e-6,  # real space resolution
     "extent_x": 1e-2,
-    "extent_f": 6e-6,  # focal plane extent, only for plotting
+    "extent_f": 10e-6,  # focal plane extent, only for plotting
     # "phase_amp_func": misaligned_tilt,
     # "displacement_func": misaligned_displacement,
     "zfi": None,

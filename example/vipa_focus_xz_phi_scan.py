@@ -1,4 +1,5 @@
 """XZ profile vs. phi animation (was vipa_focus.py TYPE == 2)."""
+
 import sys
 from pathlib import Path
 
@@ -9,16 +10,25 @@ if str(ROOT) not in sys.path:
 import numpy as np
 import imageio
 
-from src.vipa_focus import PARAMS_80, vipa_rays
+from src.vipa_focus import *
 from src.crosssections import crosssection_xz
 
-
 if __name__ == "__main__":
-    params = PARAMS_80
+    params = PARAMS_80_TWZ
 
-    EXTENT_Z = 20e-3
-    NZ = 2000
+    EXTENT_Z = 10e-6
+    NZ = 200
     NPHI = 30
+
+    # test once:
+    rays = vipa_rays(params)
+    z_scan, xf, profiles = crosssection_xz(
+        rays, params, extent_z=EXTENT_Z, n_z=NZ, show_focus=True
+    )
+
+    exit(0)
+    #
+    print("✓  Test plot complete, now generating GIF...")
     gif_data = []
     for phi in np.linspace(0.0, 2 * np.pi, NPHI):
         print(f"phi = {phi:.2f}")

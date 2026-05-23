@@ -12,6 +12,7 @@ import matplotlib.pyplot as plt
 
 from src.vipa_focus import (
     PARAMS_80,
+    PARAMS_80_TWZ,
     PARAMS_100,
     PARAMS_10,
     PARAMS_10_TWZ,
@@ -24,10 +25,11 @@ from scipy.optimize import least_squares
 
 if __name__ == "__main__":
     # params = PARAMS_100
-    params = PARAMS_10_TWZ
+    # params = PARAMS_10_TWZ
+    params = PARAMS_80_TWZ
     # params = PARAMS_10
 
-    params["phi"] = (8.2 / 11 + 2 * 8) * np.pi / 11
+    params["phi"] = (60 / 80 + 60) * (2 * np.pi) / 80
 
     FSR_L = params["lambda"] * params["f"] / params["d"]
     print("FSR_L =", FSR_L)
@@ -54,6 +56,7 @@ if __name__ == "__main__":
     # np.savez(ROOT / "data/vipa_100.npz", xf=xf, yf=yf, intensity=intensity)
     # np.savez(ROOT / "data/vipa_focus_demo_80.npz", xf=xf, yf=yf, intensity=intensity)
     # np.save(ROOT / "data/vipa_focus_demo_1d.npy", intensity)
+    exit(0)
 
     # --- 2D Gaussian fit to extract beam waist ---
     # Parameterize by (x0, y0, sigma_x, sigma_y, theta, amp, offset) — always PSD,
@@ -89,7 +92,9 @@ if __name__ == "__main__":
     w_b = 2 * sy_f
     print(f"Fit center: ({x0_f * 1e6:.3f}, {y0_f * 1e6:.3f}) um")
     print(f"Rotation angle: {np.degrees(th_f):.2f} deg")
-    print(f"Principal-axis waists (1/e^2): w_a = {w_a * 1e6:.3f} um, w_b = {w_b * 1e6:.3f} um")
+    print(
+        f"Principal-axis waists (1/e^2): w_a = {w_a * 1e6:.3f} um, w_b = {w_b * 1e6:.3f} um"
+    )
 
     Z_fit = gauss2d_rot(X2d, Y2d, x0_f, y0_f, sx_f, sy_f, th_f, amp_f, off_f)
     Z_fit = Z_fit * intensity.max()
