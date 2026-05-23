@@ -20,15 +20,7 @@ if __name__ == "__main__":
     NZ = 200
     NPHI = 30
 
-    # test once:
-    rays = vipa_rays(params)
-    z_scan, xf, profiles = crosssection_xz(
-        rays, params, extent_z=EXTENT_Z, n_z=NZ, show_focus=True
-    )
-
-    exit(0)
-    #
-    print("✓  Test plot complete, now generating GIF...")
+    print("Generating GIF...")
     gif_data = []
     for phi in np.linspace(0.0, 2 * np.pi, NPHI):
         print(f"phi = {phi:.2f}")

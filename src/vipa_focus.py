@@ -190,12 +190,12 @@ PARAMS_80_TWZ = {
     "w": 73.82e-6,  # beam waist
     "d": 420e-6,  # beam spacing
     "f": 0.04,
-    "phi": 0.0,
+    "phi": (60 / 80 + 60) * (2 * np.pi) / 80,
     "lambda": 780e-9,
     "D": 20e-2,  # real space extent
     "RESOLUTION_X": 25e-6,  # real space resolution
     "extent_x": 1e-2,
-    "extent_f": 50e-6,  # focal plane extent, only for plotting
+    "extent_f": 5e-6,  # focal plane extent, only for plotting
     # "phase_amp_func": misaligned_tilt,
     # "displacement_func": misaligned_displacement,
     "zfi": None,
