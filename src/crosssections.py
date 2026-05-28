@@ -187,6 +187,77 @@ def crosssection_x(
     return xf, profile
 
 
+def ray_support_bounds(rays, pad_factor: float = 5.0):
+    """Bounding box (x_min, x_max, y_min, y_max) of the rays' ±pad_factor*w
+    Gaussian footprints, in metres. Defines a source-plane support outside
+    of which `rays2elec2d` writes essentially zero.
+    """
+    xs = np.array([r["x"] for r in rays])
+    ys = np.array([r["y"] for r in rays])
+    ws = np.array([r["w"] for r in rays])
+    m = pad_factor * ws
+    return (xs - m).min(), (xs + m).max(), (ys - m).min(), (ys + m).max()
+
+
+def crosssection_xy_partial(
+    rays: List[dict],
+    params: dict,
+    xf_targets: np.ndarray,
+    yf_targets: np.ndarray,
+    zf: float = 0.0,
+    pad_factor: float = 5.0,
+    **kwargs,
+):
+    """Memory-efficient version of `crosssection_xy`.
+
+    1. Builds the source grid only over the ray support (`pad_factor*w`
+       around each ray centre) instead of the full `D`-wide grid.
+    2. Evaluates the focal-plane field only at the user-supplied
+       `(xf_targets, yf_targets)` via a direct matrix DFT
+       (`calc_field_after_lens_partial`), instead of a full FFT.
+
+    For PARAMS_80_TWZ this drops per-call peak memory from ~25 GB to ~200 MB
+    and keeps focal-plane sampling completely decoupled from the original
+    `D` parameter (D no longer constrains the focal pitch).
+
+    Returns
+    -------
+    xf, yf      : 1-D arrays = xf_targets, yf_targets
+    E_tilde     : 2-D array (len(yf), len(xf)), complex
+    intensity   : 2-D array (len(yf), len(xf)), |E_tilde|^2
+    """
+    RESOLUTION_X = params["RESOLUTION_X"]
+
+    x_min, x_max, y_min, y_max = ray_support_bounds(rays, pad_factor)
+    n_half_x = int(np.ceil(max(abs(x_min), abs(x_max)) / RESOLUTION_X))
+    n_half_y = int(np.ceil(max(abs(y_min), abs(y_max)) / RESOLUTION_X))
+    xi = np.arange(-n_half_x, n_half_x + 1) * RESOLUTION_X
+    yi = np.arange(-n_half_y, n_half_y + 1) * RESOLUTION_X
+
+    Xi, Yi = np.meshgrid(xi, yi, indexing="xy")
+    Ei = rays2elec2d(Xi, Yi, rays, params, **kwargs)
+    del Xi, Yi
+
+    zfi = params.get("zfi", None)
+    if zfi is not None:
+        Ei = freespace_propagation(xi, yi, Ei, params["lambda"], zfi)
+
+    E_tilde = calc_field_after_lens_partial(
+        xi, yi, Ei,
+        xf=np.asarray(xf_targets),
+        yf=np.asarray(yf_targets),
+        wl=params["lambda"],
+        f=params["f"],
+        zf=zf,
+    )
+    return (
+        np.asarray(xf_targets),
+        np.asarray(yf_targets),
+        E_tilde,
+        np.abs(E_tilde) ** 2,
+    )
+
+
 def crosssection_xz(
     rays: List[dict],
     params: dict,

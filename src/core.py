@@ -211,6 +211,69 @@ def calc_field_after_lens(
     return (xf, yf), E_tilde
 
 
+def calc_field_after_lens_partial(
+    xi: np.ndarray,
+    yi: np.ndarray,
+    Ei: np.ndarray,
+    xf: np.ndarray,
+    yf: np.ndarray,
+    wl: float,
+    f: float,
+    zf: float = 0.0,
+) -> np.ndarray:
+    """Memory-efficient variant of `calc_field_after_lens`.
+
+    Evaluates the continuous Fourier integral
+        E_tilde(xf, yf) = ∫∫ Ei(xi, yi) * exp(-j*2*pi*(xf*xi + yf*yi)/(wl*f)) dxi dyi
+    directly at user-supplied (xf, yf) target samples, as two dense matrix
+    products (separable kernel). Avoids the full FFT-sized intermediates of
+    `calc_field_after_lens`, so memory is set by the input support size
+    plus M_x*N_xi + M_y*N_yi instead of N_xi*N_yi for ALL the FFT temporaries.
+
+    Up to a constant overall scale this matches `calc_field_after_lens`; the
+    normalisation here is `dxi*dyi/(wl*f)` (continuous-FT Riemann sum), while
+    the FFT version uses `1/sqrt(N_xi*N_yi)`. Normalise to max for comparison.
+
+    Parameters
+    ----------
+    xi, yi : 1-D arrays, source-plane sample positions (uniform, monotonic)
+    Ei     : 2-D array (len(yi), len(xi)), complex input field
+    xf, yf : 1-D arrays, focal-plane target positions (any pitch / extent)
+    wl, f  : wavelength, focal length (metres)
+    zf     : focal-plane offset (metres). If nonzero, applies the same
+             exp(j*kzf*zf) factor as `calc_field_after_lens`.
+
+    Returns
+    -------
+    E_tilde : 2-D array (len(yf), len(xf)), complex focal field
+    """
+    xi = np.asarray(xi).ravel()
+    yi = np.asarray(yi).ravel()
+    xf = np.asarray(xf).ravel()
+    yf = np.asarray(yf).ravel()
+
+    Ei_eff = Ei
+    if abs(zf) > 0:
+        k0 = 2 * np.pi / wl
+        kxf_in = 2 * np.pi * xi / (wl * f)
+        kyf_in = 2 * np.pi * yi / (wl * f)
+        KX, KY = np.meshgrid(kxf_in, kyf_in, indexing="xy")
+        kzf = np.sqrt(k0**2 - KX**2 - KY**2 + 0j)
+        Ei_eff = Ei * np.exp(1j * kzf * zf)
+        del KX, KY, kzf
+
+    # Separable direct DFT: E_tilde = Wy @ Ei_eff @ Wx.T
+    Wx = np.exp(-2j * np.pi * np.outer(xf, xi) / (wl * f))  # (M_x, N_xi)
+    Wy = np.exp(-2j * np.pi * np.outer(yf, yi) / (wl * f))  # (M_y, N_yi)
+    E_tilde = (Wy @ Ei_eff) @ Wx.T
+
+    dxi = xi[1] - xi[0] if len(xi) > 1 else 1.0
+    dyi = yi[1] - yi[0] if len(yi) > 1 else 1.0
+    E_tilde *= dxi * dyi / (wl * f)
+
+    return E_tilde
+
+
 @lru_cache(maxsize=128)
 def _compute_kzf(
     xi_hash: int,
