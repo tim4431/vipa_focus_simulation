@@ -135,7 +135,7 @@ def crosssection_xy(
     return xf, yf, E_tilde, intensity
 
 
-def crosssection_x(
+def crosssection_x_naive(
     rays: List[dict],
     params: dict,
     zf: float = 0.0,
@@ -243,7 +243,9 @@ def crosssection_xy_partial(
         Ei = freespace_propagation(xi, yi, Ei, params["lambda"], zfi)
 
     E_tilde = calc_field_after_lens_partial(
-        xi, yi, Ei,
+        xi,
+        yi,
+        Ei,
         xf=np.asarray(xf_targets),
         yf=np.asarray(yf_targets),
         wl=params["lambda"],
@@ -258,7 +260,7 @@ def crosssection_xy_partial(
     )
 
 
-def crosssection_xz(
+def crosssection_xz_naive(
     rays: List[dict],
     params: dict,
     extent_z: float = 20e-6,
@@ -287,7 +289,7 @@ def crosssection_xz(
     z_scan = np.linspace(-extent_z, extent_z, n_z)
     profiles = []
     for z in tqdm(z_scan, desc="z scan"):
-        xf, prof = crosssection_x(
+        xf, prof = crosssection_x_naive(
             rays, params, zf=z, show_focus=False, tqdm_enable=False, **kwargs
         )
         profiles.append(prof)

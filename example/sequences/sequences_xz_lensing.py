@@ -1,8 +1,9 @@
 """EOM lensing sequence, XZ profile animation (was sequences.py TYPE == 1)."""
+
 import sys
 from pathlib import Path
 
-ROOT = Path(__file__).resolve().parents[1]
+ROOT = Path(__file__).resolve().parents[2]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
@@ -10,9 +11,8 @@ import numpy as np
 import imageio
 
 from src.vipa_focus import PARAMS_10, vipa_rays
-from src.crosssections import crosssection_xz
+from src.crosssections import crosssection_xz_naive
 from src.sequences import eom_model, lensing_sequences
-
 
 if __name__ == "__main__":
     params = PARAMS_10
@@ -27,7 +27,7 @@ if __name__ == "__main__":
     rays = vipa_rays(params)
     EXTENT_Z = 12e-3
     NZ = 300
-    z_scan, xf, profiles = crosssection_xz(
+    z_scan, xf, profiles = crosssection_xz_naive(
         rays, params, extent_z=EXTENT_Z, n_z=NZ, show_focus=True
     )
     # xf, yf, E_tilde_0, intensity_0 = crosssection_xy(rays, params, show_focus=True)
@@ -43,7 +43,7 @@ if __name__ == "__main__":
         for model in models:
             params.update({"phase_amp_func": model})
             rays = vipa_rays(params)
-            z_scan, xf, profiles = crosssection_xz(
+            z_scan, xf, profiles = crosssection_xz_naive(
                 rays, params, extent_z=EXTENT_Z, n_z=NZ, show_focus=False
             )
             E_tilde_sum += profiles
@@ -51,7 +51,11 @@ if __name__ == "__main__":
         gif_data.append(intensity)
     gif_data = np.array(gif_data)
     np.savez(
-        ROOT / f"data/sequences_lensing_T={T*1e9:.1f}.npz", X=X, Z=Z, I=gif_data, t=tList
+        ROOT / f"data/sequences_lensing_T={T*1e9:.1f}.npz",
+        X=X,
+        Z=Z,
+        I=gif_data,
+        t=tList,
     )
     print(gif_data.shape)
     # for every t, calculate the intensity-weighted x and z mean position

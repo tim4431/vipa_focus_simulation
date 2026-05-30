@@ -1,4 +1,5 @@
 """Misalignment displacement scan (was vipa_focus.py TYPE == 4)."""
+
 import sys
 from pathlib import Path
 
@@ -12,8 +13,7 @@ import imageio
 
 import src.vipa_focus as vipa_focus
 from src.vipa_focus import PARAMS_80, vipa_rays
-from src.crosssections import crosssection_x
-
+from src.crosssections import crosssection_x_naive
 
 if __name__ == "__main__":
     params = PARAMS_80
@@ -23,7 +23,7 @@ if __name__ == "__main__":
     for dsp in dsps:
         vipa_focus.DSP = dsp
         rays = vipa_rays(params)
-        _, intensity = crosssection_x(
+        _, intensity = crosssection_x_naive(
             rays,
             params,
             zf=0e-6,
@@ -35,5 +35,7 @@ if __name__ == "__main__":
         plt.show()
     gifs = np.array(gifs)
     gifs = (gifs / np.max(gifs) * 255).astype(np.uint8)
-    imageio.mimsave(ROOT / "example/render/vipa_misalignment_dsp.gif", gifs, fps=5, loop=0)
+    imageio.mimsave(
+        ROOT / "example/render/vipa_misalignment_dsp.gif", gifs, fps=5, loop=0
+    )
     print("✓  GIF saved as vipa_misalignment_dsp.gif")

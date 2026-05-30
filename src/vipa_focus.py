@@ -244,3 +244,25 @@ PARAMS_10_TWZ = {
     "zfi": None,
     # "gouy_phase": 0.0,
 }
+
+PARAMS_10_TWZ2 = {
+    "Nx": 8,
+    "Ny": 9,
+    "FSR_Ratio": 22.0,
+    "Lrt": 2.311,
+    "lx": 0.198,
+    "ly": 0.052,
+    "w": 108e-6,  # beam waist
+    "d": 1000e-6,  # beam spacing
+    "f": 0.017,
+    "phi": (8.2 / 11 + 2 * 8) * np.pi / 11,
+    "lambda": 780e-9,
+    "D": 15e-2,  # real space extent
+    "RESOLUTION_X": 25e-6,  # real space resolution
+    "extent_x": 1e-2,
+    "extent_f": 10e-6,  # focal plane extent, only for plotting
+    # "phase_amp_func": misaligned_tilt,
+    # "displacement_func": misaligned_displacement,
+    "zfi": None,
+    # "gouy_phase": 0.0,
+}

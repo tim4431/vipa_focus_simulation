@@ -11,7 +11,7 @@ import numpy as np
 import imageio
 
 from src.vipa_focus import *
-from src.crosssections import crosssection_xz
+from src.crosssections import crosssection_xz_naive
 
 if __name__ == "__main__":
     params = PARAMS_80_TWZ
@@ -27,7 +27,7 @@ if __name__ == "__main__":
         params["phi"] = phi  # update phase
 
         rays = vipa_rays(params)
-        z_scan, xf, profiles = crosssection_xz(
+        z_scan, xf, profiles = crosssection_xz_naive(
             rays, params, extent_z=EXTENT_Z, n_z=NZ, show_focus=False
         )
         gif_data.append(profiles)

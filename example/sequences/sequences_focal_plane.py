@@ -1,8 +1,9 @@
 """EOM time-sequence focal-plane animation (was sequences.py TYPE == 0)."""
+
 import sys
 from pathlib import Path
 
-ROOT = Path(__file__).resolve().parents[1]
+ROOT = Path(__file__).resolve().parents[2]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
@@ -18,7 +19,6 @@ from src.sequences import (
     lensing_sequences,
     pulse_sequences,
 )
-
 
 if __name__ == "__main__":
     params = PARAMS_10
@@ -56,4 +56,6 @@ if __name__ == "__main__":
     print(gif_data.shape)
 
     gif_data = (gif_data / np.max(gif_data) * 255).astype(np.uint8)
-    imageio.mimwrite(ROOT / "example/render/vipa_eom_demo.gif", gif_data, fps=10, loop=0)
+    imageio.mimwrite(
+        ROOT / "example/render/vipa_eom_demo.gif", gif_data, fps=10, loop=0
+    )

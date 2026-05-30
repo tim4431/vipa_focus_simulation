@@ -20,7 +20,8 @@ import argparse
 import sys
 from pathlib import Path
 
-ROOT = Path(__file__).resolve().parents[1]
+CWD = Path.cwd()
+ROOT = Path(__file__).resolve().parents[2]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
@@ -30,9 +31,6 @@ from tqdm import tqdm
 
 from src.vipa_focus import *
 from src.crosssections import crosssection_xy_partial
-from src.fit_gaussian import fit_gaussian_1d
-
-DATA_PATH = ROOT / "data/ripa_vs_gaussian_focus_3d.npz"
 
 
 def xz_via_xy(rays, params, z_scan, xf_targets, yf_targets):
@@ -42,7 +40,7 @@ def xz_via_xy(rays, params, z_scan, xf_targets, yf_targets):
     Step 2 (z≠0): only the y=y0 row is needed, so call the partial DFT with
                   yf_targets=[y0]. This is much cheaper than the full xy map.
     """
-    xf, yf, _, intensity_xy0 = crosssection_xy_partial(
+    xf, yf, field_xy0, intensity_xy0 = crosssection_xy_partial(
         rays, params, xf_targets, yf_targets, zf=0.0
     )
     x_stacked = np.sum(intensity_xy0, axis=1)
@@ -51,20 +49,25 @@ def xz_via_xy(rays, params, z_scan, xf_targets, yf_targets):
     print(f"  located y0 = {y0*1e6:.3f} µm (iy0 = {iy0} / {len(yf)})")
 
     profiles = np.empty((len(xf), len(z_scan)), dtype=float)
+    profiles_field = np.empty((len(xf), len(z_scan)), dtype=complex)
     iz0 = int(np.argmin(np.abs(z_scan - 0.0)))
     profiles[:, iz0] = intensity_xy0[iy0, :]
+    profiles_field[:, iz0] = field_xy0[iy0, :]
+
     del intensity_xy0
+    del field_xy0
 
     yf_row = np.array([y0])
     for iz, z in enumerate(tqdm(z_scan, desc="xy at each z")):
         if iz == iz0:
             continue
-        _, _, _, intensity_row = crosssection_xy_partial(
+        _, _, field_row, intensity_row = crosssection_xy_partial(
             rays, params, xf_targets, yf_row, zf=float(z)
         )
         profiles[:, iz] = intensity_row[0, :]
+        profiles_field[:, iz] = field_row[0, :]
 
-    return xf, yf, y0, profiles
+    return xf, yf, y0, profiles, profiles_field
 
 
 def run_calc(params, extent_z, nz, m_x, m_y):
@@ -75,8 +78,42 @@ def run_calc(params, extent_z, nz, m_x, m_y):
     rays = vipa_rays(params)
     z_scan = np.linspace(-extent_z, extent_z, nz)
     print("Running partial xy DFT at each z (memory-efficient)...")
-    xf, yf, y0, profiles = xz_via_xy(rays, params, z_scan, xf_targets, yf_targets)
+    xf, yf, y0, profiles, profiles_field = xz_via_xy(
+        rays, params, z_scan, xf_targets, yf_targets
+    )
 
+    return xf, yf, y0, z_scan, profiles, profiles_field, extent_f
+
+
+if __name__ == "__main__":
+
+    params = PARAMS_10_TWZ2
+    M = 1000
+    # M = 20000
+    params["lambda"] = params["lambda"] * M
+    params["extent_f"] = params["extent_f"] * M * 5
+    EXTENT_Z = 20e-6 * M
+    print(EXTENT_Z / params["f"])
+    print(EXTENT_Z / params["lambda"])
+    from time import sleep
+
+    sleep(2)
+    NZ = 200
+    M_X = 201
+    M_Y = 201
+    #
+    # params = PARAMS_80_TWZ
+    # params.update({"extent_f": 100e-6})
+    # EXTENT_Z = 150e-6
+    # NZ = 500
+    # M_X = 501
+    # M_Y = 501
+
+    xf, yf, y0, z_scan, profiles, profiles_field, extent_f = run_calc(
+        params, EXTENT_Z, NZ, M_X, M_Y
+    )
+
+    DATA_PATH = CWD / "render/ripa_params_10_xa.npz"
     DATA_PATH.parent.mkdir(parents=True, exist_ok=True)
     np.savez(
         DATA_PATH,
@@ -85,36 +122,41 @@ def run_calc(params, extent_z, nz, m_x, m_y):
         y0=y0,
         z_scan=z_scan,
         profiles=profiles,
+        profiles_field=profiles_field,
         extent_f=extent_f,
     )
     print(f"✓  Saved {DATA_PATH}")
-    return xf, yf, y0, z_scan, profiles, extent_f
+    # also plot countour arg(profiles_field)~0
+    phase_field = np.mod(np.angle(profiles_field), 2 * np.pi)
+    phase_close_to_zero = -np.abs(phase_field - np.pi)
+    extent = (z_scan[0] * 1e6, z_scan[-1] * 1e6, -extent_f * 1e6, extent_f * 1e6)
+    fig, axes = plt.subplots(1, 2, figsize=(12, 5))
 
+    im0 = axes[0].imshow(
+        profiles,
+        extent=extent,
+        aspect="auto",
+        cmap="inferno",
+    )
+    fig.colorbar(im0, ax=axes[0], label="intensity (a.u.)")
+    axes[0].set_xlabel("z (µm)")
+    axes[0].set_ylabel("x (µm)")
+    axes[0].set_title("Intensity |E|²")
 
-if __name__ == "__main__":
+    im1 = axes[1].imshow(
+        phase_field,
+        # phase_close_to_zero,
+        extent=extent,
+        aspect="auto",
+        cmap="viridis",
+        vmin=0,
+        vmax=2 * np.pi,
+    )
+    fig.colorbar(im1, ax=axes[1], label="phase (rad)")
+    axes[1].set_xlabel("x (µm)")
+    axes[1].set_ylabel("z (mm)")
+    axes[1].set_title("Phase of the field (mod 2π)")
 
-    params = PARAMS_10
-    # params = PARAMS_80_TWZ
-    EXTENT_Z = 10e-6
-    NZ = 100
-    M_X = 401
-    M_Y = 201
-
-    X0 = 0.0
-    Z0 = 0.0
-    CMAP = "Blues"
-
-    W0 = 720e-9
-    WL = 780e-9
-
-    if args.mode in ("calc", "both"):
-        xf, yf, y0, z_scan, profiles, extent_f = run_calc(
-            params, EXTENT_Z, NZ, M_X, M_Y
-        )
-        if args.mode == "calc":
-            print("✓  calc-only mode; skipping plots.")
-            sys.exit(0)
-    else:  # plot
-        xf, yf, y0, z_scan, profiles, extent_f = load_data()
-
-    run_plot(xf, z_scan, profiles, extent_f, W0, WL, X0, Z0, CMAP)
+    plt.tight_layout()
+    plt.savefig(CWD / "render/ripa_params_10_phase.png", dpi=600)
+    print(f"✓  Saved {CWD / 'render/ripa_params_10_phase.png'}")

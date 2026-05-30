@@ -92,7 +92,7 @@ def rays2elec2d(
             #
             ix = ray.get("ix", 0)
             iy = ray.get("iy", 0)
-            field0 = field_raw * phase_additional_patched / waist**2
+            field0 = field_raw * phase_additional_patched / waist
 
             if alpha == 1 or mmax < 1:
                 gaussian_prefactor = np.ones_like(
